@@ -1,0 +1,9 @@
+.DS_Store
+node_modules/
+coverage/
+
+# Local tooling state
+.codegraph/
+
+# WeChat Developer Tools user-specific settings
+project.private.config.json
