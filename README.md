@@ -2,6 +2,8 @@
 
 原创横屏视觉解谜小游戏。玩家依次完成梦件分拣、月相邮戳校准和云层航线投递。
 
+在线试玩：<http://47.116.213.118:8083/dream-post-office/>
+
 ## 本地运行
 
 ```bash
@@ -24,6 +26,10 @@ npm run serve:h5
 ## 微信小游戏迁移
 
 核心游戏代码位于 `src/`，未依赖 DOM。H5 的鼠标、触摸、音频和存储适配集中在 `web/runtime.js`；迁移微信小游戏时保留 `src/`，改用微信环境提供的 `wx` API 即可。
+
+## 服务器部署
+
+当前静态文件部署在 `/var/www/dream-post-office`，通过服务器现有的 Nginx `8083` 端口，以 `/dream-post-office/` 路径对外提供。对应配置模板位于 `deploy/analysis-site-with-dream-post-office.conf`。
 
 ## 美术资产
 
