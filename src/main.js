@@ -1,22 +1,45 @@
+const { DreamAudio } = require('./audio');
 const { GameState, STAGES } = require('./game-state');
-const { HorrorAudio } = require('./audio');
 const platform = require('./platform');
 
-const DESIGN_WIDTH = 750;
-const DESIGN_HEIGHT = 1334;
 const canvas = wx.createCanvas();
 const ctx = canvas.getContext('2d');
-const system = wx.getWindowInfo();
+const system = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
 const pixelRatio = system.pixelRatio || 1;
+const DESIGN_WIDTH = 1280;
+const DESIGN_HEIGHT = 720;
+const SCENE_WIDTH = 1000;
+const SIDEBAR_X = 1000;
+
 canvas.width = system.windowWidth * pixelRatio;
 canvas.height = system.windowHeight * pixelRatio;
 
 const state = new GameState();
-const audio = new HorrorAudio();
+const audio = new DreamAudio();
 let hitAreas = [];
+let slotAreas = [];
 let lastStage = state.stage;
-let flash = 0;
-let shake = 0;
+let drag = null;
+let hallReady = false;
+
+const hallImage = wx.createImage ? wx.createImage() : null;
+if (hallImage) {
+  hallImage.onload = () => { hallReady = true; };
+  hallImage.onerror = () => { hallReady = false; };
+  hallImage.src = 'assets/dream-post-office-hall.webp';
+}
+
+const PARCEL_STARTS = [
+  { x: 130, y: 515 },
+  { x: 405, y: 515 },
+  { x: 680, y: 515 }
+];
+
+const SLOT_LAYOUTS = [
+  { x: 92, y: 175, width: 210, height: 230 },
+  { x: 370, y: 175, width: 210, height: 230 },
+  { x: 648, y: 175, width: 210, height: 230 }
+];
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -26,14 +49,10 @@ function roundedRect(x, y, width, height, radius) {
   const r = Math.min(radius, width / 2, height / 2);
   ctx.beginPath();
   ctx.moveTo(x + r, y);
-  ctx.lineTo(x + width - r, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-  ctx.lineTo(x + width, y + height - r);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-  ctx.lineTo(x + r, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
   ctx.closePath();
 }
 
@@ -51,14 +70,14 @@ function strokeRounded(x, y, width, height, radius, color, lineWidth) {
 }
 
 function text(value, x, y, size, color, align, weight) {
-  ctx.fillStyle = color || '#f4e8ce';
+  ctx.fillStyle = color || '#fff1d5';
   ctx.font = `${weight || 400} ${size}px sans-serif`;
   ctx.textAlign = align || 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText(value, x, y);
 }
 
-function wrapText(value, x, y, maxWidth, lineHeight, size, color, align) {
+function wrapText(value, x, y, maxWidth, lineHeight, size, color, align, maxLines) {
   const chars = String(value).split('');
   const lines = [];
   let line = '';
@@ -73,503 +92,428 @@ function wrapText(value, x, y, maxWidth, lineHeight, size, color, align) {
     }
   });
   if (line) lines.push(line);
-  lines.slice(0, 4).forEach((row, index) => text(row, x, y + index * lineHeight, size, color, align));
-  return Math.min(lines.length, 4);
+  lines.slice(0, maxLines || 5).forEach((item, index) => text(item, x, y + index * lineHeight, size, color, align));
 }
 
 function addHit(id, x, y, width, height, payload) {
   hitAreas.push({ id, x, y, width, height, payload });
 }
 
-function drawNoise(time) {
+function drawCoverImage(image, x, y, width, height) {
+  const sourceRatio = image.width / image.height;
+  const targetRatio = width / height;
+  let sx = 0;
+  let sy = 0;
+  let sw = image.width;
+  let sh = image.height;
+  if (sourceRatio > targetRatio) {
+    sw = image.height * targetRatio;
+    sx = (image.width - sw) / 2;
+  } else {
+    sh = image.width / targetRatio;
+    sy = (image.height - sh) / 2;
+  }
+  ctx.drawImage(image, sx, sy, sw, sh, x, y, width, height);
+}
+
+function drawFallbackBackdrop() {
+  const gradient = ctx.createLinearGradient(0, 0, 0, DESIGN_HEIGHT);
+  gradient.addColorStop(0, '#17234b');
+  gradient.addColorStop(0.55, '#233a56');
+  gradient.addColorStop(1, '#6f4b61');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, SCENE_WIDTH, DESIGN_HEIGHT);
+  ctx.fillStyle = '#2b3658';
+  ctx.fillRect(60, 80, 160, 540);
+  ctx.fillRect(780, 80, 160, 540);
+  ctx.fillStyle = '#b87978';
+  ctx.beginPath();
+  ctx.arc(500, 240, 125, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#18264a';
+  ctx.beginPath();
+  ctx.arc(548, 205, 125, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawBackdrop(time) {
+  if (hallReady) drawCoverImage(hallImage, 0, 0, SCENE_WIDTH, DESIGN_HEIGHT);
+  else drawFallbackBackdrop();
+  const shade = ctx.createLinearGradient(0, 0, SCENE_WIDTH, 0);
+  shade.addColorStop(0, 'rgba(14,20,45,0.25)');
+  shade.addColorStop(0.52, 'rgba(14,20,45,0.08)');
+  shade.addColorStop(1, 'rgba(14,20,45,0.48)');
+  ctx.fillStyle = shade;
+  ctx.fillRect(0, 0, SCENE_WIDTH, DESIGN_HEIGHT);
   ctx.save();
-  ctx.globalAlpha = 0.035;
-  ctx.fillStyle = '#dcefdc';
-  for (let i = 0; i < 70; i += 1) {
-    const x = (i * 97 + time * 0.03) % DESIGN_WIDTH;
-    const y = (i * 173 + Math.sin(i * 9.1) * 80 + time * 0.015) % DESIGN_HEIGHT;
-    ctx.fillRect(x, y, 2, 2);
+  ctx.globalAlpha = 0.07;
+  for (let i = 0; i < 80; i += 1) {
+    const x = (i * 79 + time * 0.008) % SCENE_WIDTH;
+    const y = (i * 149 + Math.sin(i * 4.2) * 60) % DESIGN_HEIGHT;
+    ctx.fillStyle = i % 2 ? '#ffe2a8' : '#8ec1c1';
+    ctx.fillRect(x, y, 1.5, 1.5);
   }
   ctx.restore();
 }
 
-function drawVignette(danger) {
-  const gradient = ctx.createRadialGradient(375, 600, 180, 375, 650, 720);
-  gradient.addColorStop(0, 'rgba(0,0,0,0)');
-  gradient.addColorStop(0.66, 'rgba(0,0,0,0.2)');
-  gradient.addColorStop(1, `rgba(${Math.round(35 + danger * 45)},0,0,${0.7 + danger * 0.2})`);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+function drawSidebar() {
+  const panel = ctx.createLinearGradient(SIDEBAR_X, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
+  panel.addColorStop(0, '#171c3e');
+  panel.addColorStop(1, '#302243');
+  ctx.fillStyle = panel;
+  ctx.fillRect(SIDEBAR_X, 0, DESIGN_WIDTH - SIDEBAR_X, DESIGN_HEIGHT);
+  ctx.fillStyle = '#d69a7e';
+  ctx.fillRect(SIDEBAR_X, 0, 3, DESIGN_HEIGHT);
+
+  text('梦 境 邮 局', 1030, 52, 26, '#fff0cf', 'left', 800);
+  text('DREAM POST OFFICE', 1030, 84, 12, '#c59daf', 'left', 600);
+
+  const stageInfo = {
+    [STAGES.INTRO]: ['第零夜', '无人签收的梦'],
+    [STAGES.SORT]: ['第一幕', '失去地址的信'],
+    [STAGES.STAMP]: ['第二幕', '错位的月相邮戳'],
+    [STAGES.ROUTE]: ['第三幕', '云层投递台'],
+    [STAGES.ENDING]: ['投递完成', '所有梦都有去处']
+  }[state.stage];
+  text(stageInfo[0], 1030, 135, 14, '#dca28d', 'left', 700);
+  wrapText(stageInfo[1], 1030, 167, 220, 27, 21, '#f6e6ce', 'left', 2);
+
+  const progressStages = [STAGES.SORT, STAGES.STAMP, STAGES.ROUTE];
+  const currentIndex = progressStages.indexOf(state.stage);
+  for (let i = 0; i < 3; i += 1) {
+    ctx.fillStyle = state.stage === STAGES.ENDING || (currentIndex >= 0 && i <= currentIndex) ? '#e9b477' : '#545472';
+    ctx.beginPath();
+    ctx.arc(1040 + i * 34, 225, 7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (![STAGES.INTRO, STAGES.ENDING].includes(state.stage)) {
+    fillRounded(1028, 266, 224, 48, 14, '#865b78');
+    text('打开梦中提示', 1140, 291, 17, '#fff1d6', 'center', 700);
+    addHit('hint', 1028, 266, 224, 48);
+  }
+
+  ctx.strokeStyle = 'rgba(224,176,125,0.35)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(1030, 340);
+  ctx.lineTo(1250, 340);
+  ctx.stroke();
+
+  text('夜班投递簿', 1030, 374, 14, '#dba28c', 'left', 700);
+  wrapText(state.message, 1030, 408, 220, 25, 16, '#eee0d0', 'left', 7);
+
+  if (state.hint) {
+    fillRounded(1025, 545, 230, 138, 16, 'rgba(108,86,116,0.8)');
+    text('提示', 1044, 570, 14, '#ffd59b', 'left', 800);
+    wrapText(state.hint, 1044, 598, 193, 22, 14, '#fff0d7', 'left', 4);
+  } else {
+    text('移动、旋转并观察。', 1030, 616, 14, '#988ea7', 'left');
+    text('答案藏在物体关系里。', 1030, 642, 14, '#988ea7', 'left');
+  }
 }
 
-function drawRoomBase(time, variant) {
-  const flicker = 0.92 + Math.sin(time * 0.007) * 0.04 + Math.sin(time * 0.021) * 0.02;
-  const background = ctx.createLinearGradient(0, 0, 0, DESIGN_HEIGHT);
-  background.addColorStop(0, variant === 'corridor' ? '#071418' : '#0a1718');
-  background.addColorStop(0.58, variant === 'bells' ? '#14201d' : '#171b18');
-  background.addColorStop(1, '#050606');
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-
-  ctx.fillStyle = '#17201d';
-  ctx.fillRect(35, 120, 42, 990);
-  ctx.fillRect(673, 120, 42, 990);
-  ctx.fillStyle = '#273028';
-  ctx.fillRect(20, 110, 710, 32);
-  ctx.fillRect(20, 1075, 710, 28);
-
+function drawSymbol(kind, x, y, size, color) {
   ctx.save();
-  ctx.globalAlpha = 0.13;
-  ctx.strokeStyle = '#9ab9a2';
-  ctx.lineWidth = 2;
-  for (let y = 170; y < 1040; y += 78) {
+  ctx.translate(x, y);
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = Math.max(3, size * 0.08);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (kind === 0) {
     ctx.beginPath();
-    ctx.moveTo(75, y);
-    ctx.lineTo(675, y + Math.sin(y) * 8);
+    ctx.moveTo(-size * 0.3, size * 0.38);
+    ctx.quadraticCurveTo(size * 0.42, -size * 0.18, size * 0.18, -size * 0.46);
+    ctx.quadraticCurveTo(-size * 0.1, -size * 0.23, -size * 0.3, size * 0.38);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.18, size * 0.22);
+    ctx.lineTo(size * 0.2, -size * 0.2);
+    ctx.stroke();
+  } else if (kind === 1) {
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 0.46);
+    ctx.bezierCurveTo(size * 0.36, -size * 0.05, size * 0.34, size * 0.42, 0, size * 0.46);
+    ctx.bezierCurveTo(-size * 0.34, size * 0.42, -size * 0.36, -size * 0.05, 0, -size * 0.46);
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 0.28);
+    ctx.lineTo(0, size * 0.04);
+    ctx.lineTo(size * 0.2, size * 0.2);
     ctx.stroke();
   }
   ctx.restore();
-
-  const moon = ctx.createRadialGradient(120, 230, 10, 120, 230, 260);
-  moon.addColorStop(0, `rgba(117,188,184,${0.18 * flicker})`);
-  moon.addColorStop(1, 'rgba(20,70,75,0)');
-  ctx.fillStyle = moon;
-  ctx.fillRect(0, 0, 420, 580);
-
-  for (let i = 0; i < 5; i += 1) {
-    const x = 95 + i * 142;
-    ctx.fillStyle = 'rgba(114,22,18,0.45)';
-    ctx.fillRect(x, 145, 4, 95 + (i % 2) * 45);
-  }
 }
 
-function drawLantern(x, y, time, dim) {
-  const flicker = 0.75 + Math.sin(time * 0.012 + x) * 0.18;
-  const glow = ctx.createRadialGradient(x, y, 2, x, y, dim || 105);
-  glow.addColorStop(0, `rgba(255,192,93,${0.35 * flicker})`);
-  glow.addColorStop(1, 'rgba(255,90,20,0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(x - 130, y - 130, 260, 260);
-  ctx.fillStyle = '#5e1712';
-  fillRounded(x - 25, y - 42, 50, 72, 12, '#6f2018');
-  ctx.strokeStyle = '#b9844f';
-  ctx.lineWidth = 3;
-  ctx.strokeRect(x - 18, y - 32, 36, 50);
-  ctx.fillStyle = `rgba(255,208,118,${0.75 * flicker})`;
-  ctx.fillRect(x - 12, y - 25, 24, 38);
-}
-
-function drawDangerFigure(time, danger) {
-  if (danger < 0.46) return;
-  const progress = (danger - 0.46) / 0.54;
-  const x = 742 - progress * 125 + Math.sin(time * 0.004) * 4;
-  const y = 655;
+function drawEnvelope(x, y, width, height, index, lifted) {
   ctx.save();
-  ctx.globalAlpha = clamp(progress * 0.82, 0, 0.78);
-  ctx.fillStyle = '#020303';
+  ctx.translate(x + width / 2, y + height / 2);
+  if (lifted) {
+    ctx.scale(1.05, 1.05);
+    ctx.shadowColor = '#ffe0a2';
+    ctx.shadowBlur = 20;
+  }
+  fillRounded(-width / 2, -height / 2, width, height, 12, ['#ead5b1', '#cbdad2', '#e7c7cf'][index]);
+  strokeRounded(-width / 2, -height / 2, width, height, 12, ['#ab6978', '#4f8385', '#8568a0'][index], 4);
+  ctx.strokeStyle = 'rgba(105,72,86,0.65)';
+  ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.ellipse(x, y - 170, 42, 55, 0, 0, Math.PI * 2);
+  ctx.moveTo(-width / 2 + 7, -height / 2 + 6);
+  ctx.lineTo(0, 9);
+  ctx.lineTo(width / 2 - 7, -height / 2 + 6);
+  ctx.stroke();
+  ctx.fillStyle = ['#b96879', '#4e8d91', '#896ca4'][index];
+  ctx.beginPath();
+  ctx.arc(0, 18, 23, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillRect(x - 38, y - 125, 76, 270);
-  ctx.fillStyle = '#a80d0d';
-  ctx.fillRect(x - 24, y - 178, 12, 5);
-  ctx.fillRect(x + 12, y - 178, 12, 5);
+  drawSymbol(index, 0, 18, 27, '#fff0d5');
   ctx.restore();
 }
 
-function drawHeader(titleValue, chapter) {
-  fillRounded(34, 35, 682, 92, 18, 'rgba(4,7,7,0.72)');
-  strokeRounded(34, 35, 682, 92, 18, 'rgba(152,104,63,0.5)', 2);
-  text(chapter, 62, 65, 22, '#9f8d73', 'left');
-  text(titleValue, 62, 99, 31, '#f0dfbd', 'left', 600);
-  if (state.stage !== STAGES.INTRO && state.stage !== STAGES.ENDING && state.stage !== STAGES.FAILED) {
-    const remaining = Math.ceil(state.remainingSeconds());
-    text(`${remaining}s`, 530, 81, 30, remaining < 20 ? '#ff655c' : '#d8c7a4', 'right', 600);
-    fillRounded(552, 54, 132, 54, 14, 'rgba(93,28,21,0.65)');
-    text('求助', 618, 82, 24, '#f0d7a5', 'center', 600);
-    addHit('hint', 552, 54, 132, 54);
+function drawIntro() {
+  fillRounded(210, 126, 580, 442, 28, 'rgba(22,27,60,0.91)');
+  strokeRounded(210, 126, 580, 442, 28, '#e1ad77', 4);
+  text('梦 境 邮 局', 500, 218, 56, '#fff0cf', 'center', 800);
+  text('第零夜 · 无人签收的梦', 500, 278, 22, '#d8a6b7', 'center', 600);
+  ctx.strokeStyle = '#d2a06f';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(320, 330);
+  ctx.lineTo(680, 330);
+  ctx.stroke();
+  text('每到午夜，没人记得的梦会沿云层漂到这里。', 500, 382, 19, '#eadccc', 'center');
+  fillRounded(315, 444, 370, 72, 20, '#b66f79');
+  strokeRounded(315, 444, 370, 72, 20, '#f1c186', 3);
+  text('开始今晚的分拣', 500, 481, 24, '#fff4dc', 'center', 800);
+  addHit('start', 315, 444, 370, 72);
+}
+
+function drawSlot(slot, index, occupied) {
+  const clueKinds = [1, 2, 0];
+  fillRounded(slot.x, slot.y, slot.width, slot.height, 18, occupied ? 'rgba(242,213,166,0.46)' : 'rgba(21,29,62,0.83)');
+  strokeRounded(slot.x, slot.y, slot.width, slot.height, 18, occupied ? '#ffd28f' : ['#4e888c', '#a36b80', '#776c9c'][index], occupied ? 5 : 4);
+  drawSymbol(clueKinds[index], slot.x + slot.width / 2, slot.y + 62, 52, '#f2c58a');
+  for (let i = 0; i < 3; i += 1) {
+    ctx.fillStyle = 'rgba(240,203,153,0.2)';
+    ctx.fillRect(slot.x + 22, slot.y + 112 + i * 30, slot.width - 44, 2);
+  }
+  text(['潮汐信格', '刻度信格', '风口信格'][index], slot.x + slot.width / 2, slot.y + 207, 17, '#ead9ca', 'center', 700);
+  slotAreas.push({ id: `slot-${index}`, ...slot, payload: index });
+}
+
+function parcelPosition(index) {
+  if (drag && drag.index === index) return { x: drag.x, y: drag.y };
+  const slotIndex = state.parcels[index];
+  if (slotIndex >= 0) {
+    const slot = SLOT_LAYOUTS[slotIndex];
+    return { x: slot.x + 20, y: slot.y + 92 };
+  }
+  return PARCEL_STARTS[index];
+}
+
+function drawSortScene(time) {
+  fillRounded(250, 42, 500, 56, 16, 'rgba(21,27,60,0.82)');
+  text('把三封梦件拖入会回应它的信格', 500, 70, 21, '#fff0d5', 'center', 700);
+  SLOT_LAYOUTS.forEach((slot, index) => drawSlot(slot, index, state.parcels.some((value) => value === index)));
+  for (let i = 0; i < 3; i += 1) {
+    const position = parcelPosition(i);
+    const placed = state.parcels[i] >= 0;
+    const lifted = drag && drag.index === i;
+    ctx.save();
+    if (!placed && !lifted) {
+      ctx.translate(position.x + 85, position.y + 55);
+      ctx.rotate(Math.sin(time * 0.002 + i) * 0.025);
+      ctx.translate(-(position.x + 85), -(position.y + 55));
+    }
+    drawEnvelope(position.x, position.y, 170, 110, i, lifted);
+    ctx.restore();
+    if (!placed) addHit(`parcel-${i}`, position.x, position.y, 170, 110, i);
   }
 }
 
-function drawMessagePanel() {
-  if (!state.message || (state.messageUntil !== Infinity && Date.now() > state.messageUntil)) return;
-  fillRounded(38, 1122, 674, 166, 22, 'rgba(3,6,6,0.9)');
-  strokeRounded(38, 1122, 674, 166, 22, 'rgba(148,94,55,0.68)', 2);
-  text('磁带记录', 66, 1153, 19, '#aa8362', 'left', 600);
-  wrapText(state.message, 66, 1194, 618, 31, 24, '#efe1c6', 'left');
-}
-
-function drawHint() {
-  if (!state.hint) return;
-  fillRounded(65, 960, 620, 132, 18, 'rgba(91,61,22,0.92)');
-  text('提示', 95, 993, 21, '#ffd27c', 'left', 600);
-  wrapText(state.hint, 95, 1031, 560, 29, 22, '#fff0cf', 'left');
-}
-
-function drawIntro(time) {
-  drawRoomBase(time, 'hall');
-  drawLantern(140, 300, time, 170);
-  drawLantern(610, 300, time + 400, 170);
-  ctx.fillStyle = '#221817';
-  ctx.fillRect(150, 560, 450, 270);
-  ctx.fillStyle = '#49221b';
-  ctx.fillRect(175, 590, 400, 45);
-  ctx.strokeStyle = '#7d5b3f';
-  ctx.lineWidth = 3;
-  ctx.strokeRect(205, 660, 340, 130);
-
-  const shadow = ctx.createLinearGradient(0, 260, 0, 980);
-  shadow.addColorStop(0, 'rgba(0,0,0,0.08)');
-  shadow.addColorStop(1, 'rgba(0,0,0,0.78)');
-  ctx.fillStyle = shadow;
-  ctx.fillRect(0, 250, DESIGN_WIDTH, 820);
-
-  text('镇 夜 局', 375, 350, 74, '#d8c09a', 'center', 700);
-  text('纸 门', 375, 433, 39, '#a5362d', 'center', 600);
-  text('姐姐失踪后的第七夜', 375, 507, 24, '#9f9a8a', 'center');
-  fillRounded(155, 890, 440, 88, 20, 'rgba(113,33,25,0.92)');
-  strokeRounded(155, 890, 440, 88, 20, '#c47b51', 2);
-  text('播放最后一盘磁带', 375, 935, 29, '#ffe8bf', 'center', 600);
-  addHit('start', 155, 890, 440, 88);
-  text('建议开启声音 · 佩戴耳机', 375, 1032, 19, '#777f77', 'center');
-}
-
-function drawSealPiece(x, y, index, rotation, time) {
+function drawStampDisc(x, y, index, rotation, time) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(rotation * Math.PI / 2);
-  const glow = state.seal.every((value, i) => value === [1, 3, 2, 0][i]);
-  if (glow) {
-    ctx.shadowColor = '#ffbc68';
-    ctx.shadowBlur = 24;
-  }
-  fillRounded(-83, -83, 166, 166, 12, '#d1ad68');
-  strokeRounded(-83, -83, 166, 166, 12, '#6f261d', 7);
-  ctx.strokeStyle = '#7a211e';
-  ctx.lineWidth = 9;
+  ctx.scale(1 + Math.sin(time * 0.004 + index) * 0.006, 1 + Math.sin(time * 0.004 + index) * 0.006);
+  ctx.fillStyle = 'rgba(29,39,78,0.94)';
   ctx.beginPath();
-  ctx.moveTo(-50, -15);
-  ctx.lineTo(5, -15);
-  ctx.lineTo(5, -58);
-  ctx.lineTo(48, -58);
-  ctx.moveTo(-45, 28);
-  ctx.lineTo(42, 28);
-  ctx.moveTo(-5, -12);
-  ctx.lineTo(-5, 65);
-  ctx.stroke();
-  ctx.fillStyle = '#201613';
-  ctx.beginPath();
-  ctx.arc(0, -77, 14, 0, Math.PI * 2);
+  ctx.arc(0, 0, 105, 0, Math.PI * 2);
   ctx.fill();
+  ctx.strokeStyle = '#d8a66d';
+  ctx.lineWidth = 8;
+  ctx.stroke();
+  ctx.strokeStyle = '#a97083';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(0, 0, 76, 0, Math.PI * 2);
+  ctx.stroke();
+  for (let i = 0; i < 8; i += 1) {
+    const angle = i * Math.PI / 4;
+    ctx.fillStyle = i % 2 ? '#6da19f' : '#d28f82';
+    ctx.beginPath();
+    ctx.arc(Math.cos(angle) * 87, Math.sin(angle) * 87, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.strokeStyle = '#ffe1a1';
+  ctx.lineWidth = 11;
+  ctx.beginPath();
+  ctx.moveTo(-87, 0);
+  ctx.bezierCurveTo(-35, index === 1 ? -40 : 38, 32, index === 2 ? -35 : 32, 87, 0);
+  ctx.stroke();
+  drawSymbol(index, 0, 0, 52, '#f2ca8e');
   ctx.restore();
-  addHit(`seal-${index}`, x - 92, y - 92, 184, 184, index);
+  addHit(`stamp-${index}`, x - 120, y - 120, 240, 240, index);
 }
 
-function drawSealScene(time) {
-  drawRoomBase(time, 'hall');
-  drawLantern(115, 330, time, 135);
-  drawLantern(635, 330, time + 190, 135);
-  ctx.fillStyle = '#231915';
-  ctx.fillRect(78, 820, 594, 230);
-  ctx.fillStyle = '#4b2b20';
-  ctx.fillRect(55, 810, 640, 38);
-  ctx.fillStyle = '#120e0c';
-  ctx.fillRect(84, 848, 18, 250);
-  ctx.fillRect(648, 848, 18, 250);
-  drawSealPiece(270, 650, 0, state.seal[0], time);
-  drawSealPiece(480, 650, 1, state.seal[1], time);
-  drawSealPiece(270, 870, 2, state.seal[2], time);
-  drawSealPiece(480, 870, 3, state.seal[3], time);
-  drawDangerFigure(time, state.danger);
-  drawHeader('残符归位', '第一幕 · 封门祖堂');
+function drawStampScene(time) {
+  fillRounded(250, 42, 500, 56, 16, 'rgba(21,27,60,0.82)');
+  text('点击印盘旋转，让三段金色邮路连续', 500, 70, 21, '#fff0d5', 'center', 700);
+  ctx.strokeStyle = 'rgba(255,219,154,0.26)';
+  ctx.lineWidth = 35;
+  ctx.beginPath();
+  ctx.moveTo(90, 350);
+  ctx.lineTo(910, 350);
+  ctx.stroke();
+  [225, 500, 775].forEach((x, index) => drawStampDisc(x, 350, index, state.stamps[index], time));
+  text('每一次旋转，都会改变梦醒来的方向', 500, 535, 18, '#d5c2cb', 'center');
 }
 
-function drawBell(x, y, index, time) {
-  const pulse = state.bellInput.length && state.bellInput[state.bellInput.length - 1] === index
-    ? 1 + Math.sin(time * 0.03) * 0.05
-    : 1;
+function drawRouteIcon(value, x, y, size) {
   ctx.save();
   ctx.translate(x, y);
-  ctx.scale(pulse, pulse);
-  ctx.strokeStyle = '#54402e';
-  ctx.lineWidth = 8;
-  ctx.beginPath();
-  ctx.moveTo(0, -190);
-  ctx.lineTo(0, -110);
-  ctx.stroke();
-  const gradient = ctx.createLinearGradient(-75, -100, 80, 90);
-  gradient.addColorStop(0, '#4b3924');
-  gradient.addColorStop(0.45, '#b08343');
-  gradient.addColorStop(1, '#3e2c1d');
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.moveTo(-30, -105);
-  ctx.quadraticCurveTo(-75, -45, -86, 65);
-  ctx.quadraticCurveTo(0, 108, 86, 65);
-  ctx.quadraticCurveTo(75, -45, 30, -105);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = '#c19958';
+  ctx.strokeStyle = '#ffe2ad';
+  ctx.fillStyle = '#ffe2ad';
   ctx.lineWidth = 5;
-  ctx.stroke();
-  ctx.fillStyle = '#271a10';
-  ctx.beginPath();
-  ctx.arc(0, 77, 14, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-  addHit(`bell-${index}`, x - 100, y - 120, 200, 240, index);
-}
-
-function drawBellScene(time) {
-  drawRoomBase(time, 'bells');
-  ctx.fillStyle = '#111918';
-  ctx.fillRect(100, 295, 550, 620);
-  ctx.strokeStyle = '#3a4a42';
-  ctx.lineWidth = 8;
-  ctx.strokeRect(100, 295, 550, 620);
-  drawBell(170, 620, 0, time);
-  drawBell(375, 590, 1, time);
-  drawBell(580, 620, 2, time);
-  text('短', 170, 795, 24, '#968870', 'center');
-  text('中', 375, 795, 24, '#968870', 'center');
-  text('长', 580, 795, 24, '#968870', 'center');
-  for (let i = 0; i < 4; i += 1) {
-    ctx.fillStyle = i < state.bellInput.length ? '#c98d46' : '#2d3834';
+  if (value === 0) {
     ctx.beginPath();
-    ctx.arc(312 + i * 42, 920, 11, 0, Math.PI * 2);
+    ctx.arc(0, 5, size * 0.28, 0, Math.PI * 2);
     ctx.fill();
-  }
-  drawDangerFigure(time, state.danger);
-  drawHeader('三铃镇尸', '第二幕 · 暗室铃音');
-}
-
-function drawDoor(x, y, index, revealed) {
-  const selected = revealed && index === 1;
-  ctx.save();
-  if (selected) {
-    ctx.shadowColor = '#e1b46f';
-    ctx.shadowBlur = 35;
-  }
-  ctx.fillStyle = '#2a1c17';
-  ctx.fillRect(x, y, 166, 430);
-  ctx.fillStyle = selected ? '#d7c394' : '#a99b79';
-  ctx.fillRect(x + 16, y + 18, 134, 388);
-  ctx.strokeStyle = '#5f3025';
-  ctx.lineWidth = 6;
-  ctx.strokeRect(x + 16, y + 18, 134, 388);
-  ctx.beginPath();
-  ctx.moveTo(x + 83, y + 18);
-  ctx.lineTo(x + 83, y + 406);
-  ctx.stroke();
-  ctx.strokeStyle = selected ? '#8b1d1c' : '#514a3d';
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  if (index === 0) {
-    ctx.arc(x + 83, y + 190, 36, 0, Math.PI * 2);
-  } else if (index === 1) {
-    ctx.moveTo(x + 83, y + 145);
-    ctx.lineTo(x + 120, y + 218);
-    ctx.lineTo(x + 46, y + 218);
-    ctx.closePath();
+    ctx.fillStyle = '#d99086';
+    ctx.fillRect(-size * 0.4, 18, size * 0.8, 8);
+    ctx.fillRect(-size * 0.3, 35, size * 0.6, 7);
+  } else if (value === 1) {
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.34, Math.PI, Math.PI * 2);
+    ctx.stroke();
+    for (let i = -2; i <= 2; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(i * 13, -5);
+      ctx.lineTo(i * 18, -30);
+      ctx.stroke();
+    }
   } else {
-    ctx.rect(x + 49, y + 160, 68, 68);
-  }
-  ctx.stroke();
-  if (selected) {
-    ctx.fillStyle = '#7e1d1b';
+    fillRounded(-size * 0.4, -size * 0.2, size * 0.8, size * 0.5, 12, '#efd0a5');
+    ctx.fillStyle = '#966b86';
     ctx.beginPath();
-    ctx.arc(x + 83, y + 290, 19, 0, Math.PI * 2);
+    ctx.arc(0, -size * 0.2, size * 0.2, Math.PI, 0);
+    ctx.fill();
+    ctx.fillStyle = '#fff0b9';
+    ctx.beginPath();
+    ctx.arc(0, 5, 10, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
-  addHit(`door-${index}`, x, y, 166, 430, index);
 }
 
-function drawLampControl(x, y, index, value, time) {
-  const positions = [-32, 0, 32];
-  const flameX = x + positions[value];
-  ctx.strokeStyle = '#77634a';
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.moveTo(x - 48, y + 30);
-  ctx.lineTo(x + 48, y + 30);
-  ctx.stroke();
-  ctx.fillStyle = '#7c502d';
-  ctx.fillRect(flameX - 13, y - 12, 26, 42);
-  const glow = ctx.createRadialGradient(flameX, y - 28, 2, flameX, y - 28, 68);
-  glow.addColorStop(0, `rgba(255,217,130,${0.7 + Math.sin(time * 0.02 + index) * 0.1})`);
-  glow.addColorStop(1, 'rgba(255,100,20,0)');
-  ctx.fillStyle = glow;
-  ctx.fillRect(flameX - 70, y - 98, 140, 140);
-  ctx.fillStyle = '#f2b650';
-  ctx.beginPath();
-  ctx.moveTo(flameX, y - 50);
-  ctx.quadraticCurveTo(flameX + 15, y - 25, flameX, y - 14);
-  ctx.quadraticCurveTo(flameX - 15, y - 25, flameX, y - 50);
-  ctx.fill();
-  text(`${value + 1}`, x, y + 68, 19, '#a99878', 'center');
-  addHit(`lamp-${index}`, x - 68, y - 95, 136, 190, index);
+function drawRouteCard(x, y, index, value) {
+  const labels = ['枕边', '深海', '清晨'];
+  fillRounded(x, y, 235, 320, 24, 'rgba(25,33,72,0.92)');
+  strokeRounded(x, y, 235, 320, 24, '#c38c79', 4);
+  text(`梦件 ${index + 1}`, x + 117, y + 42, 18, '#d7a8b7', 'center', 700);
+  drawRouteIcon(value, x + 117, y + 145, 98);
+  text(labels[value], x + 117, y + 235, 28, '#fff0cf', 'center', 800);
+  text('点击切换航线', x + 117, y + 286, 15, '#aeb5ca', 'center');
+  addHit(`route-${index}`, x, y, 235, 320, index);
 }
 
-function drawDoorScene(time) {
-  drawRoomBase(time, 'corridor');
-  const floor = ctx.createLinearGradient(0, 600, 0, 1120);
-  floor.addColorStop(0, '#151915');
-  floor.addColorStop(1, '#070807');
-  ctx.fillStyle = floor;
-  ctx.beginPath();
-  ctx.moveTo(70, 980);
-  ctx.lineTo(680, 980);
-  ctx.lineTo(750, 1120);
-  ctx.lineTo(0, 1120);
-  ctx.closePath();
-  ctx.fill();
-  drawDoor(92, 370, 0, state.shadowRevealed);
-  drawDoor(292, 370, 1, state.shadowRevealed);
-  drawDoor(492, 370, 2, state.shadowRevealed);
-  drawLampControl(175, 930, 0, state.lamps[0], time);
-  drawLampControl(375, 930, 1, state.lamps[1], time);
-  drawLampControl(575, 930, 2, state.lamps[2], time);
-  drawDangerFigure(time, state.danger);
-  drawHeader('纸门照影', '第三幕 · 无尽长廊');
-}
-
-function drawFailure(time) {
-  ctx.fillStyle = 'rgba(2,4,4,0.78)';
-  ctx.fillRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-  fillRounded(66, 268, 618, 760, 30, 'rgba(11,13,12,0.97)');
-  strokeRounded(66, 268, 618, 760, 30, '#7d372d', 3);
-  ctx.fillStyle = '#8d2923';
-  ctx.fillRect(96, 268, 558, 8);
-  text('时间到了', 375, 342, 48, '#f0dfbd', 'center', 700);
-  wrapText(state.failedReason, 375, 405, 520, 34, 23, '#a99d89', 'center');
-
-  if (state.secretAdStartedAt !== null && !state.secretUnlocked) {
-    fillRounded(120, 525, 510, 270, 24, 'rgba(64,42,19,0.72)');
-    text('广告播放中', 375, 575, 25, '#e4c58a', 'center', 600);
-    text(`${state.secretAdRemaining()}s`, 375, 665, 82, '#ffcb65', 'center', 700);
-    text('看完即可解锁本关通关秘籍', 375, 747, 21, '#b9a983', 'center');
-    text('请勿退出', 375, 866, 21, '#776e60', 'center');
-    return;
-  }
-
-  if (state.secretUnlocked) {
-    fillRounded(105, 505, 540, 292, 24, 'rgba(88,61,22,0.82)');
-    text('本关通关秘籍', 375, 552, 27, '#ffd174', 'center', 700);
-    wrapText(state.hint, 375, 610, 470, 35, 23, '#fff0d1', 'center');
-    fillRounded(112, 845, 526, 86, 19, '#7b261f');
-    text('带着秘籍再试一次', 375, 889, 27, '#ffe6be', 'center', 600);
-    addHit('retry-with-secret', 112, 845, 526, 86);
-    return;
-  }
-
-  text('要不要再试一次？', 375, 527, 27, '#d6c5a6', 'center', 600);
-  fillRounded(112, 604, 526, 86, 19, '#7b261f');
-  text('再试一次', 375, 648, 28, '#ffe6be', 'center', 600);
-  addHit('retry', 112, 604, 526, 86);
-  fillRounded(112, 720, 526, 102, 19, 'rgba(112,78,31,0.95)');
-  text('看广告 3 秒', 375, 752, 27, '#ffdb8c', 'center', 700);
-  text('立即获取本关通关秘籍', 375, 791, 21, '#efe2c2', 'center');
-  addHit('secret-ad', 112, 720, 526, 102);
-}
-
-function drawFailedBackdrop(time) {
-  if (state.previousStage === STAGES.SEAL) drawSealScene(time);
-  if (state.previousStage === STAGES.BELLS) drawBellScene(time);
-  if (state.previousStage === STAGES.DOORS) drawDoorScene(time);
-  hitAreas = [];
+function drawRouteScene(time) {
+  fillRounded(250, 42, 500, 56, 16, 'rgba(21,27,60,0.82)');
+  text('选择航线，再拉下投递杆', 500, 70, 21, '#fff0d5', 'center', 700);
+  [90, 382, 674].forEach((x, index) => drawRouteCard(x, 155, index, state.routes[index]));
+  const pulse = (Math.sin(time * 0.006) + 1) / 2;
+  ctx.save();
+  ctx.shadowColor = '#ffd58e';
+  ctx.shadowBlur = 8 + pulse * 18;
+  fillRounded(315, 545, 370, 72, 20, '#b56c77');
+  strokeRounded(315, 545, 370, 72, 20, '#f0bd82', 3);
+  ctx.restore();
+  text('拉下投递杆', 500, 582, 24, '#fff2d7', 'center', 800);
+  addHit('dispatch', 315, 545, 370, 72);
 }
 
 function drawEnding(time) {
-  drawRoomBase(time, 'hall');
-  drawLantern(375, 420, time, 280);
-  ctx.fillStyle = 'rgba(0,0,0,0.64)';
-  ctx.fillRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-  text('第一夜 · 完', 375, 390, 58, '#ddc69d', 'center', 700);
-  text('你找到了姐姐的第二盘磁带', 375, 478, 25, '#9fa298', 'center');
-  fillRounded(95, 580, 560, 245, 22, 'rgba(8,10,9,0.88)');
-  wrapText(state.message, 375, 635, 490, 38, 25, '#e7d8be', 'center');
-  text('第二夜：赶尸客栈', 375, 777, 23, '#a94336', 'center', 600);
-  fillRounded(150, 920, 450, 84, 20, '#6f241d');
-  text('重新体验', 375, 963, 27, '#ffe7bf', 'center', 600);
-  addHit('restart', 150, 920, 450, 84);
+  fillRounded(210, 126, 580, 442, 28, 'rgba(22,27,60,0.91)');
+  strokeRounded(210, 126, 580, 442, 28, '#e1ad77', 4);
+  text('今夜投递完成', 500, 215, 43, '#fff0cf', 'center', 800);
+  text('三封梦都找到了醒来以前的去处', 500, 268, 20, '#d7acba', 'center');
+  for (let i = 0; i < 3; i += 1) {
+    const x = 310 + i * 190;
+    const y = 355 + Math.sin(time * 0.003 + i) * 10;
+    drawEnvelope(x, y, 145, 92, i, false);
+  }
+  text('下一夜：退回寄件人的月亮', 500, 475, 18, '#e0a28d', 'center', 700);
+  fillRounded(330, 505, 340, 54, 16, '#845775');
+  text('重新值一次夜班', 500, 533, 19, '#fff0d5', 'center', 700);
+  addHit('restart', 330, 505, 340, 54);
 }
 
 function render(time) {
   const scaleX = canvas.width / DESIGN_WIDTH;
   const scaleY = canvas.height / DESIGN_HEIGHT;
-  const shakeX = shake > 0 ? (Math.random() - 0.5) * shake : 0;
-  const shakeY = shake > 0 ? (Math.random() - 0.5) * shake : 0;
-  ctx.setTransform(scaleX, 0, 0, scaleY, shakeX, shakeY);
-  ctx.clearRect(-20, -20, DESIGN_WIDTH + 40, DESIGN_HEIGHT + 40);
+  ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+  ctx.clearRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
   hitAreas = [];
-
+  slotAreas = [];
+  drawBackdrop(time);
   if (state.stage === STAGES.INTRO) drawIntro(time);
-  if (state.stage === STAGES.SEAL) drawSealScene(time);
-  if (state.stage === STAGES.BELLS) drawBellScene(time);
-  if (state.stage === STAGES.DOORS) drawDoorScene(time);
-  if (state.stage === STAGES.FAILED) {
-    drawFailedBackdrop(time);
-    drawFailure(time);
-  }
+  if (state.stage === STAGES.SORT) drawSortScene(time);
+  if (state.stage === STAGES.STAMP) drawStampScene(time);
+  if (state.stage === STAGES.ROUTE) drawRouteScene(time);
   if (state.stage === STAGES.ENDING) drawEnding(time);
-
-  if ([STAGES.SEAL, STAGES.BELLS, STAGES.DOORS].includes(state.stage)) {
-    drawHint();
-    drawMessagePanel();
-    drawVignette(state.danger);
-  }
-  drawNoise(time);
-
-  if (flash > 0) {
-    ctx.fillStyle = `rgba(190,20,12,${flash})`;
-    ctx.fillRect(0, 0, DESIGN_WIDTH, DESIGN_HEIGHT);
-    flash = Math.max(0, flash - 0.04);
-  }
-  shake *= 0.88;
+  drawSidebar();
 }
 
 function handleStageChange() {
   if (state.stage === lastStage) return;
-  if (state.stage === STAGES.FAILED) {
-    audio.scare();
-    platform.vibrate(false);
-    flash = 0.55;
-    shake = 18;
-  } else if (state.stage === STAGES.ENDING) {
-    audio.success();
-    platform.saveProgress({ completed: true, completedAt: Date.now() });
-  } else if ([STAGES.BELLS, STAGES.DOORS].includes(state.stage)) {
-    audio.success();
-    platform.vibrate(true);
+  audio.success();
+  platform.vibrate(true);
+  if (state.stage === STAGES.ENDING) {
+    platform.saveProgress({ completed: true, completedAt: Date.now(), chapter: 'dream-post-office-00' });
   }
+  drag = null;
   lastStage = state.stage;
 }
 
 function loop(time) {
-  const secretWasUnlocked = state.secretUnlocked;
-  state.update();
-  if (!secretWasUnlocked && state.secretUnlocked) {
-    audio.success();
-    platform.vibrate(true);
-  }
-  audio.setDanger(state.danger);
   handleStageChange();
   render(time || Date.now());
   requestAnimationFrame(loop);
 }
 
 function touchPoint(touch) {
+  const clientX = touch.clientX === undefined ? touch.x : touch.clientX;
+  const clientY = touch.clientY === undefined ? touch.y : touch.clientY;
   return {
-    x: touch.clientX / system.windowWidth * DESIGN_WIDTH,
-    y: touch.clientY / system.windowHeight * DESIGN_HEIGHT
+    x: clientX / system.windowWidth * DESIGN_WIDTH,
+    y: clientY / system.windowHeight * DESIGN_HEIGHT
   };
 }
 
-function hitTest(point) {
-  for (let i = hitAreas.length - 1; i >= 0; i -= 1) {
-    const area = hitAreas[i];
-    if (point.x >= area.x && point.x <= area.x + area.width && point.y >= area.y && point.y <= area.y + area.height) return area;
+function contains(area, point) {
+  return point.x >= area.x && point.x <= area.x + area.width
+    && point.y >= area.y && point.y <= area.y + area.height;
+}
+
+function hitTest(point, areas) {
+  const source = areas || hitAreas;
+  for (let i = source.length - 1; i >= 0; i -= 1) {
+    if (contains(source[i], point)) return source[i];
   }
   return null;
 }
@@ -579,56 +523,59 @@ function performAction(area) {
   audio.ensureStarted();
   audio.click();
   if (area.id === 'start') state.begin();
-  else if (area.id === 'hint') {
-    platform.showRewardedHint(() => state.showHint());
-  } else if (area.id.indexOf('seal-') === 0) {
-    const complete = state.rotateSeal(area.payload);
-    if (complete) audio.success();
-  } else if (area.id.indexOf('bell-') === 0) {
-    audio.bell(area.payload);
-    const result = state.ringBell(area.payload);
-    if (result.wrong) {
-      flash = 0.22;
-      shake = 8;
-      platform.vibrate(true);
-    }
-  } else if (area.id.indexOf('lamp-') === 0) {
-    const revealed = state.cycleLamp(area.payload);
-    if (revealed) audio.success();
-  } else if (area.id.indexOf('door-') === 0) {
-    const escaped = state.chooseDoor(area.payload);
-    if (!escaped && state.shadowRevealed === false) {
-      audio.scare();
-      flash = 0.35;
-      shake = 12;
-    }
-  } else if (area.id === 'retry') {
-    state.retryStage();
-  } else if (area.id === 'secret-ad') {
-    state.startSecretAd();
-  } else if (area.id === 'retry-with-secret') {
-    state.retryStage(true);
-  } else if (area.id === 'restart') {
-    state.resetAll();
-  }
+  else if (area.id === 'hint') platform.showRewardedHint(() => state.showHint());
+  else if (area.id.indexOf('stamp-') === 0) {
+    audio.rotate();
+    state.rotateStamp(area.payload);
+  } else if (area.id.indexOf('route-') === 0) {
+    audio.paper();
+    state.cycleRoute(area.payload);
+  } else if (area.id === 'dispatch') state.dispatch();
+  else if (area.id === 'restart') state.resetAll();
   handleStageChange();
 }
 
 wx.onTouchStart((event) => {
   if (!event.touches || !event.touches.length) return;
-  performAction(hitTest(touchPoint(event.touches[0])));
+  const point = touchPoint(event.touches[0]);
+  const area = hitTest(point);
+  audio.ensureStarted();
+  if (state.stage === STAGES.SORT && area && area.id.indexOf('parcel-') === 0) {
+    const start = parcelPosition(area.payload);
+    drag = {
+      index: area.payload,
+      offsetX: point.x - start.x,
+      offsetY: point.y - start.y,
+      x: start.x,
+      y: start.y
+    };
+    audio.paper();
+  }
 });
 
-if (wx.onHide) {
-  wx.onHide(() => {
-    if (audio.context && audio.context.suspend) audio.context.suspend();
-  });
-}
+wx.onTouchMove((event) => {
+  if (!drag || !event.touches || !event.touches.length) return;
+  const point = touchPoint(event.touches[0]);
+  drag.x = clamp(point.x - drag.offsetX, 15, SCENE_WIDTH - 185);
+  drag.y = clamp(point.y - drag.offsetY, 105, DESIGN_HEIGHT - 125);
+});
 
-if (wx.onShow) {
-  wx.onShow(() => {
-    if (audio.context && audio.context.resume) audio.context.resume();
-  });
-}
+wx.onTouchEnd((event) => {
+  const touch = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : null;
+  if (!touch) return;
+  const point = touchPoint(touch);
+  if (drag) {
+    const parcelIndex = drag.index;
+    const slot = hitTest(point, slotAreas);
+    drag = null;
+    if (slot) {
+      const result = state.placeParcel(parcelIndex, slot.payload);
+      if (result.accepted) audio.success(); else audio.paper();
+      handleStageChange();
+    }
+    return;
+  }
+  performAction(hitTest(point));
+});
 
 requestAnimationFrame(loop);

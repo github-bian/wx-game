@@ -1,31 +1,30 @@
-# 镇夜局：纸门
+# 梦境邮局 H5
 
-一个原生 Canvas 2D 微信小游戏 MVP。玩家进入封闭旧宅，通过拼合符印、辨认镇铃、校准纸门投影完成第一章逃生。
+原创横屏视觉解谜小游戏。玩家依次完成梦件分拣、月相邮戳校准和云层航线投递。
 
-## 运行
-
-1. 使用微信开发者工具导入本目录。
-2. 在 `project.config.json` 中将 `appid` 替换为自己的小游戏 AppID。
-3. 选择“小游戏”项目类型并编译。
-
-建议打开声音体验。游戏使用 WebAudio 程序合成环境声、铃声、心跳和惊吓音效，不依赖外部音乐文件。
-
-如果想先在浏览器快速检查画面，可以运行：
+## 本地运行
 
 ```bash
-node tools/preview-server.js
+npm test
+npm run build:h5
+npm run serve:h5
 ```
 
-然后打开 `http://127.0.0.1:4173`。浏览器预览仅用于调试，最终仍应以微信开发者工具为准。
+然后访问 `http://127.0.0.1:4173`。
 
-## MVP 内容
+## 发布
 
-- 连续剧情与三段谜题
-- 竖屏单指操作
-- 每关 1–3 分钟倒计时
-- 超时弹窗、立即重试与 3 秒广告秘籍流程
-- 本地保存通关进度
+`dist/h5/` 是完整的静态站点，可以部署到任意支持 HTTPS 的静态服务器、对象存储或 CDN：
 
-## 后续接入
+- `index.html`
+- `runtime.js`
+- `game.bundle.js`
+- `assets/dream-post-office-hall.webp`
 
-`src/platform.js` 中的 `showRewardedHint` 和 `showRewardedRevive` 当前直接回调成功，可替换为正式激励视频广告。
+## 微信小游戏迁移
+
+核心游戏代码位于 `src/`，未依赖 DOM。H5 的鼠标、触摸、音频和存储适配集中在 `web/runtime.js`；迁移微信小游戏时保留 `src/`，改用微信环境提供的 `wx` API 即可。
+
+## 美术资产
+
+正式背景使用 `gpt-image-2` 生成，源提示词位于 `art/prompts/dream-post-office-h5.txt`。所有可交互物件、谜题图形和 UI 均由 Canvas 实时绘制。

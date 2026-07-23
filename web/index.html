@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#11162f">
+  <title>梦境邮局</title>
+  <link rel="preload" href="assets/dream-post-office-hall.webp" as="image" type="image/webp">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #0d1229; }
+    body { display: grid; place-items: center; font-family: system-ui, -apple-system, "PingFang SC", sans-serif; }
+    .shell { position: relative; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; background: #151a3b; box-shadow: 0 28px 90px rgba(0,0,0,.55); overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+    .toolbar { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; z-index: 3; }
+    .toolbar button { border: 1px solid rgba(242,190,133,.5); border-radius: 999px; padding: 8px 13px; color: #f9e8ce; background: rgba(25,29,65,.72); backdrop-filter: blur(8px); cursor: pointer; }
+    .toolbar button:hover { background: rgba(132,87,117,.86); }
+    .rotate { display: none; position: fixed; inset: 0; z-index: 10; place-items: center; padding: 32px; text-align: center; color: #f8e7ce; background: radial-gradient(circle at 50% 35%, #384064, #10152e 70%); }
+    .rotate strong { display: block; margin-bottom: 12px; font-size: 24px; }
+    .rotate span { color: #c9b2c1; line-height: 1.7; }
+    @media (orientation: portrait) and (max-width: 760px) {
+      .rotate { display: grid; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell" id="game-shell">
+    <canvas id="game" aria-label="梦境邮局游戏画面"></canvas>
+    <div class="toolbar">
+      <button type="button" id="fullscreen">全屏</button>
+    </div>
+  </main>
+  <div class="rotate">
+    <div><strong>请横屏游玩</strong><span>旋转设备后，替无人签收的梦找到去处。</span></div>
+  </div>
+  <script src="runtime.js"></script>
+  <script src="game.bundle.js"></script>
+</body>
+</html>

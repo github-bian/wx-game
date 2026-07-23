@@ -1,0 +1,11 @@
+Use case: stylized-concept
+Asset type: landscape H5 puzzle game environment background
+Primary request: an original dream post office sorting hall where undelivered dreams are processed at midnight
+Scene/backdrop: an intimate surreal postal room with curved brass mail chutes, mismatched pigeonhole cabinets, a crescent-shaped service window, a central sorting counter, hanging cloudy-glass lamps, floating sealed envelopes, and distant clouds outside
+Subject: environment only, no characters, no interface and no puzzle solution embedded in the image
+Style/medium: original hand-painted gouache and layered paper-collage illustration with tactile paper fibers and an elegant storybook finish
+Composition/framing: landscape 3:2 scene designed to crop safely to 16:9; straight-on room view; the central 70 percent must remain calm and readable for draggable game objects; decorative detail concentrated at the top and outer edges
+Lighting/mood: quiet midnight warmth, mysterious but comforting, dreamy rather than frightening
+Color palette: deep indigo, muted dusty rose, aged cream paper, oxidized teal and warm brass highlights; full color
+Materials/textures: handmade paper, worn wood, brushed brass, cloudy glass and wax seals
+Constraints: no text, no readable letters or numbers, no logos, no watermark, no monochrome black-and-white treatment, no trees, no branches, no direct visual references to HER TREES, no existing characters, no UI buttons, no phone or browser mockup

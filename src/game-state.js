@@ -1,22 +1,14 @@
 const STAGES = {
   INTRO: 'intro',
-  SEAL: 'seal',
-  BELLS: 'bells',
-  DOORS: 'doors',
-  ENDING: 'ending',
-  FAILED: 'failed'
+  SORT: 'sort',
+  STAMP: 'stamp',
+  ROUTE: 'route',
+  ENDING: 'ending'
 };
 
-const LIMITS = {
-  seal: 90,
-  bells: 75,
-  doors: 90
-};
-
-const SEAL_TARGET = [1, 3, 2, 0];
-const BELL_TARGET = [0, 2, 1, 0];
-const LAMP_TARGET = [2, 0, 1];
-const SECRET_AD_SECONDS = 3;
+const PARCEL_TARGET = [2, 0, 1];
+const STAMP_TARGET = [2, 0, 3];
+const ROUTE_TARGET = [1, 2, 0];
 
 class GameState {
   constructor(now) {
@@ -26,37 +18,26 @@ class GameState {
 
   resetAll() {
     this.stage = STAGES.INTRO;
-    this.previousStage = STAGES.SEAL;
     this.stageStartedAt = this.now();
-    this.pausedSeconds = 0;
-    this.danger = 0;
-    this.seal = [0, 0, 0, 0];
-    this.bellInput = [];
-    this.lamps = [0, 0, 0];
-    this.shadowRevealed = false;
-    this.message = '姐姐失踪后的第七天，我收到了她寄出的最后一盘磁带。';
+    this.parcels = [-1, -1, -1];
+    this.stamps = [0, 0, 0];
+    this.routes = [0, 0, 0];
+    this.message = '每到午夜，没人记得的梦会沿着云层漂到这里。';
     this.messageUntil = Infinity;
     this.hint = '';
-    this.failedReason = '';
-    this.secretAdStartedAt = null;
-    this.secretUnlocked = false;
   }
 
   begin() {
-    if (this.stage !== STAGES.INTRO) return;
-    this.enterStage(STAGES.SEAL, '纸门封死了。桌上的四块残印，也许能重新组成镇尸符。');
+    if (this.stage !== STAGES.INTRO) return false;
+    this.enterStage(STAGES.SORT, '三封梦件失去了地址。观察封蜡和信格，把它们送回对应的梦境。');
+    return true;
   }
 
   enterStage(stage, message) {
     this.stage = stage;
-    this.previousStage = stage;
     this.stageStartedAt = this.now();
-    this.pausedSeconds = 0;
-    this.danger = 0;
     this.hint = '';
-    this.secretAdStartedAt = null;
-    this.secretUnlocked = false;
-    this.setMessage(message, 5);
+    this.setMessage(message, 6);
   }
 
   setMessage(message, seconds) {
@@ -64,124 +45,53 @@ class GameState {
     this.messageUntil = seconds === Infinity ? Infinity : this.now() + seconds * 1000;
   }
 
-  remainingSeconds() {
-    const limit = LIMITS[this.stage];
-    if (!limit) return 0;
-    const elapsed = Math.max(0, (this.now() - this.stageStartedAt) / 1000 - this.pausedSeconds);
-    return Math.max(0, limit - elapsed);
-  }
-
-  update() {
-    if (this.stage === STAGES.FAILED) {
-      if (this.secretAdStartedAt !== null && !this.secretUnlocked
-        && this.now() - this.secretAdStartedAt >= SECRET_AD_SECONDS * 1000) {
-        this.secretUnlocked = true;
-        this.hint = this.getHintForStage(this.previousStage);
-      }
-      return;
+  placeParcel(parcelIndex, slotIndex) {
+    if (this.stage !== STAGES.SORT) return { accepted: false, complete: false };
+    if (parcelIndex < 0 || parcelIndex > 2 || slotIndex < 0 || slotIndex > 2) {
+      return { accepted: false, complete: false };
     }
-    if (!LIMITS[this.stage]) return;
-    const remaining = this.remainingSeconds();
-    const limit = LIMITS[this.stage];
-    this.danger = Math.max(this.danger, 1 - remaining / limit);
-    if (remaining <= 0) this.fail('午夜钟声落下，纸门后的人影已经站在你身后。');
-  }
-
-  rotateSeal(index) {
-    if (this.stage !== STAGES.SEAL || index < 0 || index > 3) return false;
-    this.seal[index] = (this.seal[index] + 1) % 4;
-    if (this.seal.every((value, i) => value === SEAL_TARGET[i])) {
-      this.enterStage(STAGES.BELLS, '符印亮起，里屋却响起三只镇铃。磁带里传来姐姐的低语：短、长、中、短。');
-      return true;
+    if (PARCEL_TARGET[parcelIndex] !== slotIndex) {
+      this.setMessage('信格轻轻把梦件推了回来。封蜡的图案还没有找到回声。', 3.2);
+      return { accepted: false, complete: false };
     }
-    return false;
+    this.parcels[parcelIndex] = slotIndex;
+    const complete = this.parcels.every((slot, index) => slot === PARCEL_TARGET[index]);
+    if (complete) this.enterStage(STAGES.STAMP, '地址浮现了，但月相邮戳仍是错位的。转动三枚印盘，让金色邮路连成一条线。');
+    return { accepted: true, complete };
   }
 
-  ringBell(index) {
-    if (this.stage !== STAGES.BELLS || index < 0 || index > 2) return { complete: false, wrong: false };
-    const expected = BELL_TARGET[this.bellInput.length];
-    if (index !== expected) {
-      this.bellInput = [];
-      this.danger = Math.min(1, this.danger + 0.14);
-      this.setMessage('铃声错了。门后的指甲声突然更近。', 2.6);
-      return { complete: false, wrong: true };
-    }
-    this.bellInput.push(index);
-    if (this.bellInput.length === BELL_TARGET.length) {
-      this.enterStage(STAGES.DOORS, '三道纸门同时出现。调整烛影，让地上的三道影子分别落在远、近、中位。');
-      return { complete: true, wrong: false };
-    }
-    return { complete: false, wrong: false };
+  rotateStamp(index) {
+    if (this.stage !== STAGES.STAMP || index < 0 || index > 2) return false;
+    this.stamps[index] = (this.stamps[index] + 1) % 4;
+    const complete = this.stamps.every((value, i) => value === STAMP_TARGET[i]);
+    if (complete) this.enterStage(STAGES.ROUTE, '邮戳发出微光。最后为三封梦件选择航线，再拉下投递杆。');
+    return complete;
   }
 
-  cycleLamp(index) {
-    if (this.stage !== STAGES.DOORS || index < 0 || index > 2) return false;
-    this.lamps[index] = (this.lamps[index] + 1) % 3;
-    this.shadowRevealed = this.lamps.every((value, i) => value === LAMP_TARGET[i]);
-    if (this.shadowRevealed) this.setMessage('烛影重合。中间纸门上，浮出了姐姐留下的指印。', 4);
-    return this.shadowRevealed;
+  cycleRoute(index) {
+    if (this.stage !== STAGES.ROUTE || index < 0 || index > 2) return false;
+    this.routes[index] = (this.routes[index] + 1) % 3;
+    return this.routes.every((value, i) => value === ROUTE_TARGET[i]);
   }
 
-  chooseDoor(index) {
-    if (this.stage !== STAGES.DOORS) return false;
-    if (!this.shadowRevealed) {
-      this.danger = Math.min(1, this.danger + 0.08);
-      this.setMessage('纸门纹丝不动。必须先让烛影重合。', 2.5);
+  dispatch() {
+    if (this.stage !== STAGES.ROUTE) return false;
+    const ready = this.routes.every((value, i) => value === ROUTE_TARGET[i]);
+    if (!ready) {
+      this.setMessage('黄铜管道里传来迷路的风声。至少有一封梦件选错了航线。', 3.5);
       return false;
     }
-    if (index === 1) {
-      this.stage = STAGES.ENDING;
-      this.stageStartedAt = this.now();
-      this.setMessage('门后没有出口，只有姐姐的第二盘磁带。纸门在你身后缓缓合拢……', Infinity);
-      return true;
-    }
-    this.danger = Math.min(1, this.danger + 0.22);
-    this.shadowRevealed = false;
-    this.lamps = [0, 0, 0];
-    this.setMessage('门后贴着一张苍白的脸。你猛地退回走廊。', 3);
-    return false;
-  }
-
-  fail(reason) {
-    if (this.stage === STAGES.FAILED || this.stage === STAGES.ENDING) return;
-    this.previousStage = this.stage;
-    this.stage = STAGES.FAILED;
-    this.failedReason = reason;
-    this.secretAdStartedAt = null;
-    this.secretUnlocked = false;
+    this.stage = STAGES.ENDING;
+    this.stageStartedAt = this.now();
     this.hint = '';
-    this.setMessage(reason, Infinity);
-  }
-
-  startSecretAd() {
-    if (this.stage !== STAGES.FAILED || this.secretAdStartedAt !== null || this.secretUnlocked) return false;
-    this.secretAdStartedAt = this.now();
+    this.setMessage('三封梦穿过云层：一封去了清晨，一封去了深海，一封回到了某个孩子的枕边。', Infinity);
     return true;
   }
 
-  secretAdRemaining() {
-    if (this.secretAdStartedAt === null || this.secretUnlocked) return 0;
-    const elapsed = (this.now() - this.secretAdStartedAt) / 1000;
-    return Math.max(0, Math.ceil(SECRET_AD_SECONDS - elapsed));
-  }
-
-  retryStage(preserveSecret) {
-    const stage = this.previousStage;
-    const learnedHint = preserveSecret && this.secretUnlocked ? this.getHintForStage(stage) : '';
-    if (stage === STAGES.SEAL) this.seal = [0, 0, 0, 0];
-    if (stage === STAGES.BELLS) this.bellInput = [];
-    if (stage === STAGES.DOORS) {
-      this.lamps = [0, 0, 0];
-      this.shadowRevealed = false;
-    }
-    this.enterStage(stage, '磁带倒转。你又回到了刚才那一刻。');
-    if (learnedHint) this.hint = learnedHint;
-  }
-
   getHintForStage(stage) {
-    if (stage === STAGES.SEAL) return '依次点击四块残印：左上 1 次、右上 3 次、左下 2 次、右下不动。四个缺口最终朝向右、左、下、上。';
-    if (stage === STAGES.BELLS) return '按“短、长、中、短”的顺序敲铃，也就是依次点击左、右、中、左。敲错后需要从头开始。';
-    if (stage === STAGES.DOORS) return '从左到右把烛台调到第 3、1、2 档。中间纸门发光后，点击中间那扇门即可通关。';
+    if (stage === STAGES.SORT) return '看封蜡的形状：羽毛寻找风口，水滴寻找潮汐，钟摆寻找有刻度的信格。';
+    if (stage === STAGES.STAMP) return '从左到右分别转动 2、0、3 次。三段金线会在印盘中央连续起来。';
+    if (stage === STAGES.ROUTE) return '从左到右把航线调成“深海、清晨、枕边”，然后拉下投递杆。';
     return '';
   }
 
@@ -192,10 +102,9 @@ class GameState {
 }
 
 module.exports = {
-  BELL_TARGET,
   GameState,
-  LAMP_TARGET,
-  SECRET_AD_SECONDS,
-  SEAL_TARGET,
-  STAGES
+  PARCEL_TARGET,
+  ROUTE_TARGET,
+  STAGES,
+  STAMP_TARGET
 };

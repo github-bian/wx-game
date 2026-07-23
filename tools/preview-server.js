@@ -69,14 +69,14 @@ function page() {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-    <title>镇夜局：纸门 - 本地预览</title>
+    <title>梦境邮局 - 本地预览</title>
     <style>
       * { box-sizing: border-box; }
-      html, body { margin: 0; min-height: 100%; background: #050706; color: #d8c7a4; font-family: sans-serif; }
+      html, body { margin: 0; min-height: 100%; background: #111633; color: #f2ddc4; font-family: sans-serif; }
       body { display: grid; place-items: center; padding: 18px; }
       main { display: grid; justify-items: center; gap: 10px; }
-      canvas { width: min(390px, calc(100vw - 28px)); height: min(694px, calc(100vh - 72px)); box-shadow: 0 24px 80px #000; border: 1px solid #3c2c23; border-radius: 16px; touch-action: none; }
-      p { margin: 0; color: #756e61; font-size: 12px; }
+      canvas { width: min(390px, calc(100vw - 28px), calc((100vh - 72px) * 0.5622)); height: auto; aspect-ratio: 750 / 1334; box-shadow: 0 24px 80px #080a1d; border: 1px solid #b57d83; border-radius: 16px; touch-action: none; }
+      p { margin: 0; color: #a999b1; font-size: 12px; }
     </style>
   </head>
   <body>
@@ -86,13 +86,24 @@ function page() {
     </main>
     <script>
       const previewCanvas = document.querySelector('canvas');
-      let touchHandler = null;
+      let touchStartHandler = null;
+      let touchMoveHandler = null;
+      let touchEndHandler = null;
+      const previewTouch = (event) => {
+        const rect = previewCanvas.getBoundingClientRect();
+        return {
+          clientX: (event.clientX - rect.left) / rect.width * 390,
+          clientY: (event.clientY - rect.top) / rect.height * 694
+        };
+      };
       window.wx = {
         createCanvas: () => previewCanvas,
         getWindowInfo: () => ({ windowWidth: 390, windowHeight: 694, pixelRatio: window.devicePixelRatio || 1 }),
         getSystemInfoSync: () => ({ windowWidth: 390, windowHeight: 694, pixelRatio: window.devicePixelRatio || 1 }),
         createWebAudioContext: () => new (window.AudioContext || window.webkitAudioContext)(),
-        onTouchStart: (handler) => { touchHandler = handler; },
+        onTouchStart: (handler) => { touchStartHandler = handler; },
+        onTouchMove: (handler) => { touchMoveHandler = handler; },
+        onTouchEnd: (handler) => { touchEndHandler = handler; },
         onHide: () => {},
         onShow: () => {},
         vibrateShort: () => {},
@@ -100,12 +111,14 @@ function page() {
         setStorageSync: (key, value) => localStorage.setItem(key, JSON.stringify(value))
       };
       previewCanvas.addEventListener('pointerdown', (event) => {
-        if (!touchHandler) return;
-        const rect = previewCanvas.getBoundingClientRect();
-        touchHandler({ touches: [{
-          clientX: (event.clientX - rect.left) / rect.width * 390,
-          clientY: (event.clientY - rect.top) / rect.height * 694
-        }] });
+        previewCanvas.setPointerCapture(event.pointerId);
+        if (touchStartHandler) touchStartHandler({ touches: [previewTouch(event)] });
+      });
+      previewCanvas.addEventListener('pointermove', (event) => {
+        if (event.buttons && touchMoveHandler) touchMoveHandler({ touches: [previewTouch(event)] });
+      });
+      previewCanvas.addEventListener('pointerup', (event) => {
+        if (touchEndHandler) touchEndHandler({ changedTouches: [previewTouch(event)] });
       });
       ${browserBundle()}
     </script>

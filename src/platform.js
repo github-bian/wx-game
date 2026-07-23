@@ -1,6 +1,6 @@
 function saveProgress(value) {
   try {
-    wx.setStorageSync('paper-door-progress', value);
+    wx.setStorageSync('dream-post-office-progress', value);
   } catch (error) {
     // Storage failure should never stop the game loop.
   }
