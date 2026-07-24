@@ -64,6 +64,7 @@ fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(path.join(outDir, 'assets'), { recursive: true });
 fs.copyFileSync(path.join(root, 'web/index.html'), path.join(outDir, 'index.html'));
 fs.copyFileSync(path.join(root, 'web/runtime.js'), path.join(outDir, 'runtime.js'));
-fs.copyFileSync(path.join(root, 'assets/dream-post-office-hall.webp'), path.join(outDir, 'assets/dream-post-office-hall.webp'));
+fs.copyFileSync(path.join(root, 'assets/felt-post-office-room.webp'), path.join(outDir, 'assets/felt-post-office-room.webp'));
+fs.copyFileSync(path.join(root, 'assets/felt-post-office-room-portrait.webp'), path.join(outDir, 'assets/felt-post-office-room-portrait.webp'));
 fs.writeFileSync(path.join(outDir, 'game.bundle.js'), bundle());
 console.log(`Built H5 game: ${outDir}`);
