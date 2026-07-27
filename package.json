@@ -1,6 +1,6 @@
 {
-  "name": "dream-post-office-h5",
-  "version": "0.1.0",
+  "name": "five-phase-locks-h5",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "build:h5": "node tools/build-h5.js",

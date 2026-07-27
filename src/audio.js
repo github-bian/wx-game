@@ -1,4 +1,4 @@
-class DreamAudio {
+class GameAudio {
   constructor() {
     this.context = null;
     this.master = null;
@@ -6,13 +6,29 @@ class DreamAudio {
   }
 
   ensureStarted() {
-    if (this.started || !wx.createWebAudioContext) return;
+    if (this.started) {
+      this.resume();
+      return;
+    }
+    if (!wx.createWebAudioContext) return;
     this.context = wx.createWebAudioContext();
     this.master = this.context.createGain();
     this.master.gain.value = 0.18;
     this.master.connect(this.context.destination);
     this.started = true;
     this.startAmbience();
+  }
+
+  suspend() {
+    if (!this.context || this.context.state !== 'running' || !this.context.suspend) return;
+    const pending = this.context.suspend();
+    if (pending && pending.catch) pending.catch(() => {});
+  }
+
+  resume() {
+    if (!this.context || this.context.state !== 'suspended' || !this.context.resume) return;
+    const pending = this.context.resume();
+    if (pending && pending.catch) pending.catch(() => {});
   }
 
   startAmbience() {
@@ -72,4 +88,4 @@ class DreamAudio {
   }
 }
 
-module.exports = { DreamAudio };
+module.exports = { GameAudio };

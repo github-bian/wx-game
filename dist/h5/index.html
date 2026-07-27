@@ -3,46 +3,47 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-  <meta name="theme-color" content="#17172b">
-  <title>梦境邮局 · 给还记得的人</title>
-  <link rel="preload" href="assets/felt-post-office-room.webp" as="image" type="image/webp">
-  <link rel="preload" href="assets/felt-post-office-room-portrait.webp" as="image" type="image/webp">
+  <meta name="theme-color" content="#171311">
+  <title>镇夜司：五行锁</title>
+  <link rel="preload" href="assets/taoist-escape/01-key-art.webp" as="image" type="image/webp">
+  <link rel="preload" href="assets/taoist-escape/02-yinyang-mortuary-room.webp" as="image" type="image/webp">
+  <link rel="preload" href="assets/taoist-escape/03-wood-wind-corridor.webp" as="image" type="image/webp">
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #111326; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #0d0c0c; }
     body {
       display: grid;
       place-items: center;
-      font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+      font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
       background:
-        radial-gradient(circle at 50% 25%, rgba(103, 76, 126, .34), transparent 42%),
-        repeating-linear-gradient(12deg, rgba(255,255,255,.018) 0 1px, transparent 1px 5px),
-        #111326;
+        radial-gradient(circle at 50% 24%, rgba(104, 65, 43, .28), transparent 42%),
+        repeating-linear-gradient(12deg, rgba(255,255,255,.012) 0 1px, transparent 1px 5px),
+        #0d0c0c;
     }
     .shell {
       position: relative;
       width: min(100vw, calc(100vh * 16 / 9));
       height: min(100vh, calc(100vw * 9 / 16));
-      background: #1a1b32;
-      box-shadow: 0 28px 100px rgba(0,0,0,.62);
+      background: #171311;
+      box-shadow: 0 28px 100px rgba(0,0,0,.72);
       overflow: hidden;
       isolation: isolate;
     }
     canvas { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
     .toolbar { position: absolute; top: max(10px, env(safe-area-inset-top)); right: max(10px, env(safe-area-inset-right)); z-index: 3; }
     .toolbar button {
-      border: 1px dashed rgba(225,188,155,.62);
+      border: 1px dashed rgba(190,145,91,.65);
       border-radius: 999px;
       padding: 7px 12px;
-      color: #f7e8d2;
-      background: rgba(42,38,62,.78);
+      color: #ead8b8;
+      background: rgba(39,30,27,.8);
       backdrop-filter: blur(10px);
       cursor: pointer;
       font: inherit;
       font-size: 12px;
     }
-    .toolbar button:hover { background: rgba(116,86,110,.9); }
+    .toolbar button:hover { background: rgba(100,62,48,.92); }
     @media (orientation: portrait) {
       .shell {
         width: min(100vw, calc(100vh * 9 / 16));
@@ -53,7 +54,7 @@
 </head>
 <body>
   <main class="shell" id="game-shell">
-    <canvas id="game" aria-label="梦境邮局视觉解谜游戏"></canvas>
+    <canvas id="game" aria-label="镇夜司五行锁国风密室逃脱游戏"></canvas>
     <div class="toolbar"><button type="button" id="fullscreen">全屏</button></div>
   </main>
   <script src="runtime.js"></script>

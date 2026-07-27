@@ -1,8 +1,9 @@
-(function bootstrapDreamPostOffice() {
+(function bootstrapFivePhaseLocks() {
   const canvas = document.getElementById('game');
   const shell = document.getElementById('game-shell');
   const fullscreen = document.getElementById('fullscreen');
   const handlers = { start: null, move: null, end: null };
+  const lifecycleHandlers = { hide: [], show: [] };
   let activePointerId = null;
 
   function shellInfo() {
@@ -31,8 +32,8 @@
     onTouchStart: (handler) => { handlers.start = handler; },
     onTouchMove: (handler) => { handlers.move = handler; },
     onTouchEnd: (handler) => { handlers.end = handler; },
-    onHide: () => {},
-    onShow: () => {},
+    onHide: (handler) => { if (typeof handler === 'function') lifecycleHandlers.hide.push(handler); },
+    onShow: (handler) => { if (typeof handler === 'function') lifecycleHandlers.show.push(handler); },
     vibrateShort: () => { if (navigator.vibrate) navigator.vibrate(18); },
     vibrateLong: () => { if (navigator.vibrate) navigator.vibrate(42); },
     setStorageSync: (key, value) => localStorage.setItem(key, JSON.stringify(value)),
@@ -67,6 +68,11 @@
 
   window.addEventListener('pointerup', endPointer, true);
   window.addEventListener('pointercancel', endPointer, true);
+
+  document.addEventListener('visibilitychange', () => {
+    const type = document.hidden ? 'hide' : 'show';
+    lifecycleHandlers[type].forEach((handler) => handler());
+  });
 
   fullscreen.addEventListener('click', async () => {
     try {

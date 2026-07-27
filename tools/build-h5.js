@@ -64,7 +64,16 @@ fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(path.join(outDir, 'assets'), { recursive: true });
 fs.copyFileSync(path.join(root, 'web/index.html'), path.join(outDir, 'index.html'));
 fs.copyFileSync(path.join(root, 'web/runtime.js'), path.join(outDir, 'runtime.js'));
-fs.copyFileSync(path.join(root, 'assets/felt-post-office-room.webp'), path.join(outDir, 'assets/felt-post-office-room.webp'));
-fs.copyFileSync(path.join(root, 'assets/felt-post-office-room-portrait.webp'), path.join(outDir, 'assets/felt-post-office-room-portrait.webp'));
+fs.mkdirSync(path.join(outDir, 'assets', 'taoist-escape'), { recursive: true });
+[
+  '01-key-art.webp',
+  '02-yinyang-mortuary-room.webp',
+  '03-wood-wind-corridor.webp'
+].forEach((asset) => {
+  fs.copyFileSync(
+    path.join(root, 'assets', 'taoist-escape', asset),
+    path.join(outDir, 'assets', 'taoist-escape', asset)
+  );
+});
 fs.writeFileSync(path.join(outDir, 'game.bundle.js'), bundle());
 console.log(`Built H5 game: ${outDir}`);
